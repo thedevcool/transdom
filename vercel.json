@@ -1,7 +1,7 @@
 {
-  "buildCommand": "pip install --no-cache-dir -r requirements.txt",
+  "buildCommand": "uv venv && uv pip install -r requirements.txt",
   "devCommand": "uvicorn main:app --reload",
-  "installCommand": "pip install --no-cache-dir -r requirements.txt",
+  "installCommand": "uv pip install -r requirements.txt",
   "outputDirectory": ".",
   "framework": "fastapi"
 }

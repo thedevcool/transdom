@@ -1,0 +1,12 @@
+.git
+.gitignore
+venv
+__pycache__
+.pytest_cache
+htmlcov
+.env
+.DS_Store
+*.xlsx
+import_rates.py
+import.sh
+extracted_rates.json

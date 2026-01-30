@@ -331,6 +331,36 @@ async def get_price_for_zone_weight(zone: str, weight: float):
         )
 
 
+@router.get("/zones", response_model=List[str])
+async def get_zones():
+    """
+    Get list of all available shipping zones in the database.
+    
+    Returns a sorted list of zone codes (e.g., ['ASIA', 'EUROPE', 'UK_IRELAND', ...])
+    """
+    try:
+        db = get_db()
+        collection = db["shipping_rates"]
+        
+        # Get distinct zone values
+        zones = await collection.distinct("zone")
+        
+        if not zones:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No zones found in database"
+            )
+        
+        return sorted(zones)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching zones: {str(e)}"
+        )
+
+
 # ============ ADMIN ENDPOINTS ============
 
 @router.post("/admin/signup", response_model=AdminTokenResponse, status_code=status.HTTP_201_CREATED)
@@ -456,21 +486,25 @@ async def log_payment(payload: PaymentRequest, user: dict = Depends(get_current_
 
 @router.post("/make-order", response_model=Order, status_code=status.HTTP_201_CREATED)
 async def make_order(payload: MakeOrderRequest, user: dict = Depends(get_current_user)):
-    """Create a new order after successful payment (user only)"""
+    """
+    Create a new order with complete booking details (user only)
+
+    Request body must include all sender, receiver, and shipment details as flat fields
+    """
     try:
-        # Validate email format
-        if not is_valid_email(payload.email):
+        # Validate sender email format
+        if not is_valid_email(payload.sender_email):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid email format"
+                detail="Invalid sender email format"
             )
 
         # Check if email exists in users collection
-        email_exists = await email_exists_in_db(payload.email)
+        email_exists = await email_exists_in_db(payload.sender_email)
         if not email_exists:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Email not registered in our database"
+                detail="Sender email not registered in our database"
             )
 
         db = get_db()
@@ -493,11 +527,31 @@ async def make_order(payload: MakeOrderRequest, user: dict = Depends(get_current
         order_dict = {
             "order_no": order_no,
             "zone_picked": payload.zone_picked.upper(),
-            "weight": payload.weight,
-            "email": payload.email.lower(),
+            "delivery_speed": payload.delivery_speed,
             "amount_paid": payload.amount_paid,
             "status": "pending",
-            "date_created": datetime.utcnow()
+            "date_created": datetime.utcnow(),
+            # Sender details
+            "sender_name": payload.sender_name,
+            "sender_phone": payload.sender_phone,
+            "sender_address": payload.sender_address,
+            "sender_state": payload.sender_state,
+            "sender_city": payload.sender_city,
+            "sender_country": payload.sender_country,
+            "sender_email": payload.sender_email.lower(),
+            # Receiver details
+            "receiver_name": payload.receiver_name,
+            "receiver_phone": payload.receiver_phone,
+            "receiver_address": payload.receiver_address,
+            "receiver_state": payload.receiver_state,
+            "receiver_city": payload.receiver_city,
+            "receiver_post_code": payload.receiver_post_code,
+            "receiver_country": payload.receiver_country,
+            # Shipment details
+            "shipment_description": payload.shipment_description,
+            "shipment_quantity": payload.shipment_quantity,
+            "shipment_value": payload.shipment_value,
+            "shipment_weight": payload.shipment_weight,
         }
 
         result = await orders.insert_one(order_dict)
@@ -518,7 +572,6 @@ async def make_order(payload: MakeOrderRequest, user: dict = Depends(get_current
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error creating order: {str(e)}"
         )
-
 
 @router.post("/log-order-activity", status_code=status.HTTP_201_CREATED)
 async def log_order_activity(
@@ -660,7 +713,7 @@ async def admin_get_order_logs(
 async def get_user_shipments(user: dict = Depends(get_current_user)):
     """
     Get all shipments/orders for the authenticated user.
-    Returns orders sorted by date (newest first).
+    Returns orders sorted by date (newest first) with complete booking details.
     """
     try:
         # Get the authenticated user's email
@@ -674,9 +727,9 @@ async def get_user_shipments(user: dict = Depends(get_current_user)):
         db = get_db()
         orders = db["orders"]
 
-        # Find all orders for this user's email
+        # Find all orders for this user's email (matching sender_email)
         user_orders = await orders.find(
-            {"email": user_email.lower()}
+            {"sender_email": user_email.lower()}
         ).sort("date_created", -1).to_list(length=None)
 
         # Convert ObjectId to string for all orders
@@ -694,7 +747,6 @@ async def get_user_shipments(user: dict = Depends(get_current_user)):
         )
 
 
-# Optional: Get a single shipment by order number
 @router.get("/shipments/{order_no}", response_model=Order)
 async def get_shipment_by_order_no(order_no: str, user: dict = Depends(get_current_user)):
     """
@@ -715,7 +767,7 @@ async def get_shipment_by_order_no(order_no: str, user: dict = Depends(get_curre
         # Find the order and verify it belongs to this user
         order = await orders.find_one({
             "order_no": order_no,
-            "email": user_email.lower()
+            "sender_email": user_email.lower()
         })
 
         if not order:
@@ -735,7 +787,6 @@ async def get_shipment_by_order_no(order_no: str, user: dict = Depends(get_curre
         )
 
 
-# Optional: Admin endpoint to get all shipments
 @router.get("/admin/shipments", response_model=AdminShipmentsResponse)
 async def get_all_shipments(
         admin: dict = Depends(get_current_admin),
@@ -744,12 +795,12 @@ async def get_all_shipments(
         limit: int = 100
 ):
     """
-    Get all shipments (admin only).
+    Get all shipments (admin only) with complete booking details.
     Can filter by status or email.
 
     Query parameters:
     - status_filter: Filter by order status (pending, approved, rejected)
-    - email: Filter by user email
+    - email: Filter by sender email
     - limit: Maximum number of results (default 100)
     """
     try:
@@ -761,7 +812,7 @@ async def get_all_shipments(
         if status_filter:
             query["status"] = status_filter.lower()
         if email:
-            query["email"] = email.lower()
+            query["sender_email"] = email.lower()
 
         # Get orders sorted by date (newest first)
         all_orders = await orders.find(query).sort(
@@ -829,7 +880,6 @@ async def approve_order(payload: ApproveOrderRequest, admin: dict = Depends(get_
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error approving order: {str(e)}"
         )
-
 
 # ============ DELETE ORDER ENDPOINTS (ADMIN ONLY) ============
 

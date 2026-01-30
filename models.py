@@ -3,10 +3,12 @@ from typing import List, Optional, Union
 from bson import ObjectId
 from datetime import datetime
 
+
 class RateEntry(BaseModel):
     """Individual weight-price pair"""
     weight: int = Field(..., description="Weight in kg (e.g., 2, 3, 4)")
     price: Union[float, str] = Field(..., description="Price in NGN (numeric or formatted string)")
+
 
 class ShippingRate(BaseModel):
     """Shipping rate for a zone"""
@@ -14,6 +16,7 @@ class ShippingRate(BaseModel):
     currency: str = Field(default="NGN", description="Currency code")
     unit: str = Field(default="kg", description="Weight unit")
     rates: List[RateEntry] = Field(..., description="List of weight-price pairs")
+
 
 class ShippingRateResponse(ShippingRate):
     """Response model with MongoDB _id"""
@@ -24,6 +27,7 @@ class ShippingRateResponse(ShippingRate):
         json_encoders = {
             ObjectId: str
         }
+
 
 class PriceResponse(BaseModel):
     """Price lookup response"""
@@ -158,22 +162,101 @@ class Payment(BaseModel):
         json_encoders = {ObjectId: str}
 
 
-# Order Models
-class MakeOrderRequest(BaseModel):
-    """Create order payload"""
-    zone_picked: str
-    weight: int
+# Booking Details Models
+class SenderDetails(BaseModel):
+    """Sender information"""
+    name: str
+    phone_number: str
+    address: str
+    state: str
+    city: str
+    country: str
     email: str
+
+
+class ReceiverDetails(BaseModel):
+    """Receiver information"""
+    name: str
+    phone_number: str
+    address: str
+    state: str
+    city: str
+    post_code: str
+    country: str
+
+
+class ShipmentContent(BaseModel):
+    """Contents of the shipment"""
+    description: str
+    quantity: int
+    value: Optional[float] = None
+    weight: float
+
+
+class MakeOrderRequest(BaseModel):
+    """Create order payload with detailed booking information"""
+    # Sender details
+    sender_name: str
+    sender_phone: str
+    sender_address: str
+    sender_state: str
+    sender_city: str
+    sender_country: str
+    sender_email: str
+
+    # Receiver details
+    receiver_name: str
+    receiver_phone: str
+    receiver_address: str
+    receiver_state: str
+    receiver_city: str
+    receiver_post_code: str
+    receiver_country: str
+
+    # Shipment details
+    shipment_description: str
+    shipment_quantity: int
+    shipment_value: Optional[float] = None
+    shipment_weight: float
+
+    # Pricing details
+    zone_picked: str
+    delivery_speed: str  # "economy", "standard", or "express"
     amount_paid: float
 
 
 class Order(BaseModel):
-    """Order record in DB"""
+    """Order record in DB with detailed booking information"""
     id: Optional[str] = Field(None, alias="_id")
     order_no: str
+
+    # Sender details
+    sender_name: str
+    sender_phone: str
+    sender_address: str
+    sender_state: str
+    sender_city: str
+    sender_country: str
+    sender_email: str
+
+    # Receiver details
+    receiver_name: str
+    receiver_phone: str
+    receiver_address: str
+    receiver_state: str
+    receiver_city: str
+    receiver_post_code: str
+    receiver_country: str
+
+    # Shipment details
+    shipment_description: str
+    shipment_quantity: int
+    shipment_value: Optional[float] = None
+    shipment_weight: float
+
+    # Pricing and status
     zone_picked: str
-    weight: int
-    email: str
+    delivery_speed: str
     amount_paid: float
     status: str  # "approved", "pending", "rejected"
     date_created: Optional[datetime] = None

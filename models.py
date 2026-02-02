@@ -222,7 +222,10 @@ class MakeOrderRequest(BaseModel):
     # Pricing details
     zone_picked: str
     delivery_speed: str  # "economy", "standard", or "express"
+    add_insurance: bool = False  # Whether to add insurance to the shipment
+    insurance_fee: Optional[float] = None  # Calculated insurance fee
     amount_paid: float
+    
 
 
 class Order(BaseModel):
@@ -257,6 +260,8 @@ class Order(BaseModel):
     # Pricing and status
     zone_picked: str
     delivery_speed: str
+    add_insurance: bool = False  # Whether insurance was added
+    insurance_fee: Optional[float] = None  # Insurance fee charged
     amount_paid: float
     status: str  # "approved", "pending", "rejected"
     date_created: Optional[datetime] = None
@@ -276,6 +281,20 @@ class ValidateRequest(BaseModel):
     """Validate zone and weight"""
     zone: str
     weight: int
+
+
+class InsuranceCalculationRequest(BaseModel):
+    """Request to calculate insurance fee"""
+    shipment_value: float = Field(..., description="Declared value of the shipment in NGN", gt=0)
+
+
+class InsuranceCalculationResponse(BaseModel):
+    """Response with calculated insurance fee"""
+    shipment_value: float
+    insurance_fee: float
+    insurance_rate: float  # The percentage rate used
+    minimum_fee: float  # The minimum insurance fee
+    currency: str = "NGN"
 
 
 class AdminShipmentsResponse(BaseModel):

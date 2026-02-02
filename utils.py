@@ -3,6 +3,7 @@ Utility functions for the API
 """
 import re
 from database import get_db
+from config import INSURANCE_RATE, MINIMUM_INSURANCE_FEE
 
 def is_valid_email(email: str) -> bool:
     """
@@ -75,4 +76,25 @@ def format_rates_response(rates_list: list) -> list:
         }
         for rate in rates_list
     ]
+
+
+def calculate_insurance_fee(shipment_value: float) -> float:
+    """
+    Calculate insurance fee based on shipment value.
+    
+    Args:
+        shipment_value: The declared value of the shipment in NGN
+        
+    Returns:
+        Calculated insurance fee (max of percentage-based fee or minimum fee)
+    """
+    if not shipment_value or shipment_value <= 0:
+        return MINIMUM_INSURANCE_FEE
+    
+    # Calculate percentage-based fee
+    percentage_fee = shipment_value * INSURANCE_RATE
+    
+    # Return the maximum of percentage fee or minimum fee
+    return max(percentage_fee, MINIMUM_INSURANCE_FEE)
+
 

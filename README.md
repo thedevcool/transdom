@@ -122,6 +122,41 @@ curl -H "X-API-Key: transdom-api-key-2026" http://localhost:8000/api/rates/UK_IR
 }
 ```
 
+### POST `/api/calculate-insurance`
+
+Calculate insurance fee for a shipment based on its declared value.
+
+**Headers:**
+
+```
+Content-Type: application/json
+```
+
+**Request Body:**
+
+```json
+{
+  "shipment_value": 50000
+}
+```
+
+**Response:**
+
+```json
+{
+  "shipment_value": 50000,
+  "insurance_fee": 1000,
+  "insurance_rate": 0.02,
+  "minimum_fee": 500,
+  "currency": "NGN"
+}
+```
+
+**Notes:**
+- Insurance fee is calculated as 2% of shipment value (configurable via `INSURANCE_RATE`)
+- Minimum insurance fee is ₦500 (configurable via `MINIMUM_INSURANCE_FEE`)
+- The higher of percentage-based fee or minimum fee is charged
+
 ### GET `/`
 
 Health check endpoint (no authentication required).
@@ -254,11 +289,13 @@ transdom/
 
 Create `.env` file with:
 
-| Variable      | Required | Description                | Example                              |
-| ------------- | -------- | -------------------------- | ------------------------------------ |
-| `MONGODB_URI` | Yes      | MongoDB connection string  | `mongodb+srv://user:pass@cluster...` |
-| `DB_NAME`     | Yes      | Database name              | `transdom`                           |
-| `API_KEY`     | Yes      | API key for authentication | `transdom-api-key-2026`              |
+| Variable                | Required | Description                         | Example                              |
+| ----------------------- | -------- | ----------------------------------- | ------------------------------------ |
+| `MONGODB_URI`           | Yes      | MongoDB connection string           | `mongodb+srv://user:pass@cluster...` |
+| `DB_NAME`               | Yes      | Database name                       | `transdom`                           |
+| `API_KEY`               | Yes      | API key for authentication          | `transdom-api-key-2026`              |
+| `INSURANCE_RATE`        | No       | Insurance rate as decimal (default: 0.02 = 2%) | `0.02`                    |
+| `MINIMUM_INSURANCE_FEE` | No       | Minimum insurance fee in NGN (default: 500)    | `500`                     |
 
 ### MongoDB Connection
 

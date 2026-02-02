@@ -19,10 +19,12 @@ from models import (
     Order,
     ApproveOrderRequest,
     ValidateRequest,
+    InsuranceCalculationRequest,
+    InsuranceCalculationResponse,
     AdminShipmentsResponse,
 )
 from database import get_db
-from utils import format_price, format_rates_response, is_valid_email, email_exists_in_db
+from utils import format_price, format_rates_response, is_valid_email, email_exists_in_db, calculate_insurance_fee
 from auth import (
     verify_api_key,
     get_password_hash,
@@ -449,6 +451,31 @@ async def validate_api_key(payload: ValidateRequest, api_key: str = Depends(veri
     return {"message": "API key is valid", "validated": True}
 
 
+@router.post("/calculate-insurance", response_model=InsuranceCalculationResponse, status_code=status.HTTP_200_OK)
+async def calculate_insurance(payload: InsuranceCalculationRequest):
+    """
+    Calculate insurance fee for a given shipment value.
+    This endpoint can be called before creating an order to show the insurance cost.
+    """
+    try:
+        from config import INSURANCE_RATE, MINIMUM_INSURANCE_FEE
+        
+        insurance_fee = calculate_insurance_fee(payload.shipment_value)
+        
+        return {
+            "shipment_value": payload.shipment_value,
+            "insurance_fee": insurance_fee,
+            "insurance_rate": INSURANCE_RATE,
+            "minimum_fee": MINIMUM_INSURANCE_FEE,
+            "currency": "NGN"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error calculating insurance: {str(e)}"
+        )
+
+
 # ============ PAYMENT ENDPOINTS ============
 
 @router.post("/log-payment", response_model=Payment, status_code=status.HTTP_201_CREATED)
@@ -524,10 +551,22 @@ async def make_order(payload: MakeOrderRequest, user: dict = Depends(get_current
         date_str = datetime.utcnow().strftime("%Y%m%d")
         order_no = f"transdom_order{order_num}_{date_str}"
 
+        # Calculate insurance fee if requested
+        insurance_fee = None
+        if payload.add_insurance:
+            if not payload.shipment_value or payload.shipment_value <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Shipment value is required when adding insurance"
+                )
+            insurance_fee = calculate_insurance_fee(payload.shipment_value)
+
         order_dict = {
             "order_no": order_no,
             "zone_picked": payload.zone_picked.upper(),
             "delivery_speed": payload.delivery_speed,
+            "add_insurance": payload.add_insurance,
+            "insurance_fee": insurance_fee,
             "amount_paid": payload.amount_paid,
             "status": "pending",
             "date_created": datetime.utcnow(),

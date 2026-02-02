@@ -80,21 +80,44 @@ def format_rates_response(rates_list: list) -> list:
 
 def calculate_insurance_fee(shipment_value: float) -> float:
     """
-    Calculate insurance fee based on shipment value.
+    Calculate insurance fee based on shipment value using tiered brackets.
     
     Args:
         shipment_value: The declared value of the shipment in NGN
         
     Returns:
-        Calculated insurance fee (max of percentage-based fee or minimum fee)
+        Calculated insurance fee based on value brackets
+        
+    Brackets:
+        0 to 100,000: ₦5,000
+        101,000 to 200,000: ₦7,500
+        200,001 to 500,000: ₦10,000
+        500,001 to 1,000,000: ₦20,000
+        1,000,001 to 2,000,000: ₦30,000
+        2,000,001 to 5,000,000: ₦120,000
+        5,000,001 to 10,000,000: ₦240,000
+        Above 10,000,000: ₦240,000 (max)
     """
     if not shipment_value or shipment_value <= 0:
-        return MINIMUM_INSURANCE_FEE
+        return 5000  # Default to lowest tier
     
-    # Calculate percentage-based fee
-    percentage_fee = shipment_value * INSURANCE_RATE
-    
-    # Return the maximum of percentage fee or minimum fee
-    return max(percentage_fee, MINIMUM_INSURANCE_FEE)
+    # Tiered insurance brackets
+    if shipment_value <= 100000:
+        return 5000
+    elif shipment_value <= 200000:
+        return 7500
+    elif shipment_value <= 500000:
+        return 10000
+    elif shipment_value <= 1000000:
+        return 20000
+    elif shipment_value <= 2000000:
+        return 30000
+    elif shipment_value <= 5000000:
+        return 120000
+    elif shipment_value <= 10000000:
+        return 240000
+    else:
+        # For values above 10,000,000, cap at highest tier
+        return 240000
 
 

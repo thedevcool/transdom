@@ -454,8 +454,17 @@ async def validate_api_key(payload: ValidateRequest, api_key: str = Depends(veri
 @router.post("/calculate-insurance", response_model=InsuranceCalculationResponse, status_code=status.HTTP_200_OK)
 async def calculate_insurance(payload: InsuranceCalculationRequest):
     """
-    Calculate insurance fee for a given shipment value.
+    Calculate insurance fee for a given shipment value using tiered brackets.
     This endpoint can be called before creating an order to show the insurance cost.
+    
+    Tiers:
+    - ₦0 to ₦100,000: ₦5,000
+    - ₦101,000 to ₦200,000: ₦7,500
+    - ₦200,001 to ₦500,000: ₦10,000
+    - ₦500,001 to ₦1,000,000: ₦20,000
+    - ₦1,000,001 to ₦2,000,000: ₦30,000
+    - ₦2,000,001 to ₦5,000,000: ₦120,000
+    - ₦5,000,001 to ₦10,000,000: ₦240,000
     """
     try:
         from config import INSURANCE_RATE, MINIMUM_INSURANCE_FEE

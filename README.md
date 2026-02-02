@@ -145,17 +145,21 @@ Content-Type: application/json
 ```json
 {
   "shipment_value": 50000,
-  "insurance_fee": 1000,
+  "insurance_fee": 5000,
   "insurance_rate": 0.02,
   "minimum_fee": 500,
   "currency": "NGN"
 }
 ```
 
-**Notes:**
-- Insurance fee is calculated as 2% of shipment value (configurable via `INSURANCE_RATE`)
-- Minimum insurance fee is ₦500 (configurable via `MINIMUM_INSURANCE_FEE`)
-- The higher of percentage-based fee or minimum fee is charged
+**Insurance Tiers:**
+- ₦0 to ₦100,000: ₦5,000
+- ₦101,000 to ₦200,000: ₦7,500
+- ₦200,001 to ₦500,000: ₦10,000
+- ₦500,001 to ₦1,000,000: ₦20,000
+- ₦1,000,001 to ₦2,000,000: ₦30,000
+- ₦2,000,001 to ₦5,000,000: ₦120,000
+- ₦5,000,001 to ₦10,000,000: ₦240,000
 
 ### GET `/`
 

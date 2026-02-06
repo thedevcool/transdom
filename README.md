@@ -10,7 +10,8 @@ A high-performance FastAPI REST API for managing and querying international ship
 - **💰 Formatted Prices**: All prices returned with comma-separated format (e.g., `1,234.56`)
 - **📊 Flexible Querying**: Filter by zone, lookup specific prices, or get all rates
 - **➕ Easy Management**: Add or update shipping rates via REST endpoint
-- **📚 Interactive Docs**: Built-in Swagger UI and ReDoc documentation
+- **� Email Notifications**: Automated emails via Zoho for signup, orders, and approvals
+- **�📚 Interactive Docs**: Built-in Swagger UI and ReDoc documentation
 - **☁️ Cloud Ready**: Optimized for Vercel serverless deployment
 
 ## 📋 API Endpoints

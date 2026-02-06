@@ -10,6 +10,9 @@ ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 # minutes
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
+# Frontend URL
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://transdomlogistics.com")
+
 # Insurance configuration
 # Insurance rate as a percentage of shipment value (default: 2%)
 INSURANCE_RATE = float(os.getenv("INSURANCE_RATE", "0.02"))

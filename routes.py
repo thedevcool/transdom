@@ -25,6 +25,7 @@ from models import (
 )
 from database import get_db
 from utils import format_price, format_rates_response, is_valid_email, email_exists_in_db, calculate_insurance_fee
+from email_service import email_service
 from auth import (
     verify_api_key,
     get_password_hash,
@@ -90,6 +91,13 @@ async def signup(payload: UserSignup):
             "referral_code": payload.referral_code,
             "photo_url": payload.photo_url,
         }
+
+        # Send welcome email
+        if email_service:
+            try:
+                email_service.send_welcome_email(email, payload.firstname)
+            except Exception as e:
+                print(f"Failed to send welcome email: {str(e)}")
 
         return {"access_token": access_token, "token_type": "bearer", "user": user_public}
     except HTTPException:
@@ -442,6 +450,106 @@ async def admin_login(payload: AdminLogin):
         )
 
 
+@router.delete("/admin/users/{identifier}", status_code=status.HTTP_200_OK)
+async def delete_user(identifier: str, admin: dict = Depends(get_current_admin)):
+    """
+    Delete a user by ID or email (admin only).
+    
+    The identifier can be either:
+    - MongoDB ObjectId (24-character hex string)
+    - Email address
+    
+    Returns the deleted user information.
+    """
+    try:
+        db = get_db()
+        users = db["users"]
+        
+        # Determine if identifier is ObjectId or email
+        query = {}
+        if len(identifier) == 24 and all(c in '0123456789abcdefABCDEF' for c in identifier):
+            # Looks like an ObjectId
+            try:
+                query = {"_id": ObjectId(identifier)}
+            except Exception:
+                # If ObjectId conversion fails, treat as email
+                query = {"email": identifier.lower()}
+        else:
+            # Treat as email
+            query = {"email": identifier.lower()}
+        
+        # Find and delete the user
+        deleted_user = await users.find_one_and_delete(query)
+        
+        if not deleted_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User not found with identifier: {identifier}"
+            )
+        
+        # Convert ObjectId to string for response
+        deleted_user["_id"] = str(deleted_user.get("_id"))
+        
+        # Remove sensitive information from response
+        deleted_user.pop("hashed_password", None)
+        
+        return {
+            "message": "User deleted successfully",
+            "user": {
+                "id": deleted_user["_id"],
+                "email": deleted_user.get("email"),
+                "firstname": deleted_user.get("firstname"),
+                "lastname": deleted_user.get("lastname"),
+                "deleted_at": datetime.utcnow().isoformat()
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting user: {str(e)}"
+        )
+
+
+@router.delete("/admin/users", status_code=status.HTTP_200_OK)
+async def delete_all_users(admin: dict = Depends(get_current_admin)):
+    """
+    Delete ALL users from the database (admin only).
+    Use with extreme caution - this action cannot be undone!
+    
+    Returns the count of deleted users.
+    """
+    try:
+        db = get_db()
+        users = db["users"]
+        
+        # Count users before deletion
+        count = await users.count_documents({})
+        
+        if count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No users found to delete"
+            )
+        
+        # Delete all users
+        result = await users.delete_many({})
+        
+        return {
+            "message": f"All users deleted successfully",
+            "deleted_count": result.deleted_count,
+            "deleted_at": datetime.utcnow().isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting users: {str(e)}"
+        )
+
+
 @router.post("/validate", status_code=status.HTTP_200_OK)
 async def validate_api_key(payload: ValidateRequest, api_key: str = Depends(verify_api_key)):
     """
@@ -612,6 +720,48 @@ async def make_order(payload: MakeOrderRequest, user: dict = Depends(get_current
         # Return the created order
         order = await orders.find_one({"_id": result.inserted_id})
         order["_id"] = str(order.get("_id"))
+
+        # Send order confirmation email
+        if email_service:
+            try:
+                # Build order details for email
+                order_details = {
+                    "sender": {
+                        "name": payload.sender_name,
+                        "phone": payload.sender_phone,
+                        "address": payload.sender_address,
+                        "city": payload.sender_city,
+                        "country": payload.sender_country
+                    },
+                    "receiver": {
+                        "name": payload.receiver_name,
+                        "phone": payload.receiver_phone,
+                        "address": payload.receiver_address,
+                        "city": payload.receiver_city,
+                        "country": payload.receiver_country
+                    },
+                    "shipment": {
+                        "destination_zone": payload.zone_picked,
+                        "weight": payload.shipment_weight,
+                        "package_type": payload.delivery_speed,
+                        "contents_description": payload.shipment_description
+                    },
+                    "pricing": {
+                        "shipping_fee": format_price(payload.amount_paid),
+                        "insurance_fee": format_price(insurance_fee) if insurance_fee else "0.00",
+                        "total_amount": format_price(payload.amount_paid + (insurance_fee or 0))
+                    }
+                }
+                
+                email_service.send_order_confirmation_email(
+                    user_email=payload.sender_email,
+                    user_name=payload.sender_name.split()[0],  # First name
+                    order_no=order_no,
+                    order_details=order_details
+                )
+            except Exception as e:
+                print(f"Failed to send order confirmation email: {str(e)}")
+
         return order
     except HTTPException:
         raise
@@ -920,6 +1070,59 @@ async def approve_order(payload: ApproveOrderRequest, admin: dict = Depends(get_
             )
 
         updated["_id"] = str(updated.get("_id"))
+
+        # Send approval/rejection email with receipt
+        if email_service and payload.status.lower() in ["approved", "rejected"]:
+            try:
+                # Build order details for email
+                order_details = {
+                    "sender": {
+                        "name": updated.get("sender_name", "N/A"),
+                        "phone": updated.get("sender_phone", "N/A"),
+                        "address": updated.get("sender_address", "N/A"),
+                        "city": updated.get("sender_city", "N/A"),
+                        "country": updated.get("sender_country", "N/A")
+                    },
+                    "receiver": {
+                        "name": updated.get("receiver_name", "N/A"),
+                        "phone": updated.get("receiver_phone", "N/A"),
+                        "address": updated.get("receiver_address", "N/A"),
+                        "city": updated.get("receiver_city", "N/A"),
+                        "country": updated.get("receiver_country", "N/A")
+                    },
+                    "shipment": {
+                        "destination_zone": updated.get("zone_picked", "N/A"),
+                        "weight": updated.get("shipment_weight", 0),
+                        "package_type": updated.get("delivery_speed", "N/A"),
+                        "contents_description": updated.get("shipment_description", "N/A")
+                    },
+                    "pricing": {
+                        "shipping_fee": format_price(updated.get("amount_paid", 0)),
+                        "insurance_fee": format_price(updated.get("insurance_fee", 0)) if updated.get("insurance_fee") else "0.00",
+                        "shipment_value": format_price(updated.get("shipment_value", 0)),
+                        "total_amount": format_price(updated.get("amount_paid", 0) + (updated.get("insurance_fee", 0) or 0))
+                    },
+                    "payment": {
+                        "payment_method": updated.get("delivery_speed", "N/A"),
+                        "reference": payload.order_no
+                    },
+                    "created_at": updated.get("date_created", datetime.utcnow()).strftime("%B %d, %Y at %I:%M %p") if isinstance(updated.get("date_created"), datetime) else str(updated.get("date_created", "N/A"))
+                }
+                
+                sender_email = updated.get("sender_email")
+                sender_name = updated.get("sender_name", "").split()[0] if updated.get("sender_name") else "Customer"
+                
+                if sender_email:
+                    email_service.send_order_approval_email(
+                        user_email=sender_email,
+                        user_name=sender_name,
+                        order_no=payload.order_no,
+                        order_details=order_details,
+                        status=payload.status
+                    )
+            except Exception as e:
+                print(f"Failed to send order approval email: {str(e)}")
+
         return updated
     except HTTPException:
         raise
